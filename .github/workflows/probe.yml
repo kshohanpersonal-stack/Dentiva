@@ -7,5 +7,9 @@ jobs:
   win:
     runs-on: windows-latest
     steps:
-      - run: echo "windows runner ok"; node -v
+      - run: |
+          mkdir out
+          node -e "require('fs').writeFileSync('out/blob.bin', Buffer.alloc(3*1024*1024, 7))"
         shell: bash
+      - uses: actions/upload-artifact@v4
+        with: { name: probe-artifact, path: out }

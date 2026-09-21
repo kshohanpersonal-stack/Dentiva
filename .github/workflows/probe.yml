@@ -7,9 +7,53 @@ jobs:
   win:
     runs-on: windows-latest
     steps:
-      - run: |
-          mkdir out
-          node -e "require('fs').writeFileSync('out/blob.bin', Buffer.alloc(3*1024*1024, 7))"
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: scaffold
         shell: bash
-      - uses: actions/upload-artifact@v4
-        with: { name: probe-artifact, path: out }
+        run: |
+          mkdir -p smoke && cd smoke
+          cat > package.json <<'J'
+          { "name":"smoke","version":"1.0.0","main":"main.js","description":"smoke","author":"t",
+            "dependencies":{"libsql":"0.5.29"},
+            "devDependencies":{"electron":"43.7.3","electron-builder":"26.15.3"} }
+          J
+          cat > main.js <<'J'
+          const { app } = require('electron');
+          const path = require('path');
+          const Database = require('libsql');
+          app.disableHardwareAcceleration();
+          app.whenReady().then(() => {
+            const db = new Database(path.join(app.getPath('userData'), 't.db'));
+            db.exec('CREATE TABLE IF NOT EXISTS t(a INTEGER PRIMARY KEY, b TEXT)');
+            db.prepare('INSERT INTO t(b) VALUES(?)').run('বাংলা-ok');
+            console.log('SMOKE_DB_OK', db.prepare('SELECT count(*) c FROM t').get().c);
+            app.quit();
+          });
+          J
+          cat > electron-builder.yml <<'J'
+          appId: com.dentiva.smoke
+          productName: Smoke
+          directories: { output: dist }
+          files: ["main.js", "package.json", "node_modules/**/*"]
+          asarUnpack: ["**/node_modules/@libsql/**", "**/node_modules/libsql/**"]
+          compression: maximum
+          win:
+            target:
+              - { target: nsis, arch: [x64] }
+              - { target: portable, arch: [x64] }
+          nsis: { oneClick: false, allowToChangeInstallationDirectory: true }
+          J
+          npm install --no-audit --no-fund
+      - name: build
+        shell: bash
+        working-directory: smoke
+        run: npx electron-builder --win --x64 2>&1 | tail -20
+      - name: sizes + run test
+        shell: bash
+        working-directory: smoke
+        run: |
+          ls -la dist/ | sed 's/^/SIZE /'
+          du -sm dist/win-unpacked | sed 's/^/UNPACKED_MB /'
+          cd dist/win-unpacked && ./Smoke.exe --no-sandbox > out.log 2>&1 || echo "exit=$?"
+          sleep 5; cat out.log || true

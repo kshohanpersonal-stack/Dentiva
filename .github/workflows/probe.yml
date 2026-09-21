@@ -1,7 +1,11 @@
 name: probe
-on: workflow_dispatch
+on:
+  push:
+    branches: [arena/01a0c217-dentiva]
+    paths: ['.github/workflows/probe.yml']
 jobs:
-  p:
-    runs-on: ubuntu-latest
+  win:
+    runs-on: windows-latest
     steps:
-      - run: echo hi
+      - run: echo "windows runner ok"; node -v
+        shell: bash
